@@ -6,15 +6,26 @@ Share a live Claude Code session with a collaborator over SSH.
 
 ## What it does
 
-- Starts a shared tmux session tunneled via upterm so a guest can connect with a single SSH command
-- Both host and guest see the same Claude Code terminal in real time
-- Optional session recording with asciinema-compatible output
+- Share a live Claude Code session — guest joins with a single `ssh` command, no install needed
+- Restrict access to specific GitHub users via SSH key verification (`--allow`)
+- Browser-based viewer via ttyd (`--web`) for non-technical observers
+- Session recording in asciinema-compatible format
 
 ## Quick start
 
 **Host** (starts the session):
 ```sh
 claude-pair host
+```
+
+**Restrict to specific GitHub users:**
+```sh
+claude-pair host --allow alice --allow bob
+```
+
+**Add a browser-accessible viewer:**
+```sh
+claude-pair host --web
 ```
 
 **Guest** (joins with the SSH command the host shares):
@@ -35,11 +46,7 @@ go install github.com/albertnahas/claude-pair/cmd/claude-pair@latest
 
 Homebrew tap coming once the project stabilizes.
 
-Prerequisites: [upterm](https://github.com/owenthereal/upterm), [tmux](https://github.com/tmux/tmux), [claude](https://docs.anthropic.com/en/docs/claude-code)
-
-```sh
-claude-pair doctor   # verify all dependencies
-```
+The installer handles all dependencies (upterm, tmux, ttyd). Run `claude-pair doctor` to verify.
 
 ## How it works
 
