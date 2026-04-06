@@ -3,7 +3,7 @@ set -e
 
 REPO="albertnahas/claude-pair"
 BINARY="claude-pair"
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${HOME}/.local/bin"
 
 # Detect OS and arch
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -27,12 +27,22 @@ echo "Installing $BINARY $VERSION ($OS/$ARCH)..."
 TMP=$(mktemp -d)
 curl -fsSL "$URL" -o "$TMP/archive.tar.gz"
 tar -xzf "$TMP/archive.tar.gz" -C "$TMP"
-sudo mkdir -p "$INSTALL_DIR"
-sudo cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
-sudo chmod 755 "$INSTALL_DIR/$BINARY"
+mkdir -p "$INSTALL_DIR"
+cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+chmod 755 "$INSTALL_DIR/$BINARY"
 rm -rf "$TMP"
 
 echo "$BINARY $VERSION installed to $INSTALL_DIR/$BINARY"
+
+# Ensure ~/.local/bin is on PATH
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*) ;;
+  *) echo ""
+     echo "Add to your shell profile:"
+     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+     ;;
+esac
+
 echo ""
 echo "Prerequisites: upterm, tmux, claude"
 echo "  brew install --cask owenthereal/upterm/upterm"
