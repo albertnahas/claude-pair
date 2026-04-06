@@ -27,7 +27,9 @@ echo "Installing $BINARY $VERSION ($OS/$ARCH)..."
 TMP=$(mktemp -d)
 curl -fsSL "$URL" -o "$TMP/archive.tar.gz"
 tar -xzf "$TMP/archive.tar.gz" -C "$TMP"
-sudo install -m 755 "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+sudo mkdir -p "$INSTALL_DIR"
+sudo cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
+sudo chmod 755 "$INSTALL_DIR/$BINARY"
 rm -rf "$TMP"
 
 echo "$BINARY $VERSION installed to $INSTALL_DIR/$BINARY"
