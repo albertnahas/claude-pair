@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -16,7 +20,7 @@ func main() {
 		Short: "Real-time pair programming with shared Claude Code sessions",
 	}
 
-	root.AddCommand(hostCmd(), joinCmd(), stopCmd(), doctorCmd(), statusCmd())
+	root.AddCommand(hostCmd(), joinCmd(), stopCmd(), doctorCmd(), statusCmd(), discoverCmd())
 
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
@@ -25,10 +29,11 @@ func main() {
 
 func hostCmd() *cobra.Command {
 	var (
-		noRecord   bool
-		name       string
-		allowUsers []string
-		web        bool
+		noRecord     bool
+		name         string
+		allowUsers   []string
+		web          bool
+		discoverable bool
 	)
 
 	cmd := &cobra.Command{
@@ -36,11 +41,12 @@ func hostCmd() *cobra.Command {
 		Short: "Start a shared Claude Code session",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := session.HostConfig{
-				ProjectDir: mustGetwd(),
-				Record:     !noRecord,
-				Name:       name,
-				AllowUsers: allowUsers,
-				Web:        web,
+				ProjectDir:   mustGetwd(),
+				Record:       !noRecord,
+				Name:         name,
+				AllowUsers:   allowUsers,
+				Web:          web,
+				Discoverable: discoverable,
 			}
 			mgr, err := session.NewManager(cfg)
 			if err != nil {
@@ -54,8 +60,70 @@ func hostCmd() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "Human-readable session name")
 	cmd.Flags().StringSliceVar(&allowUsers, "allow", nil, "Restrict access to GitHub users (e.g., --allow alice --allow bob)")
 	cmd.Flags().BoolVar(&web, "web", false, "Launch a browser-accessible viewer via ttyd")
+	cmd.Flags().BoolVar(&discoverable, "discoverable", false, "Advertise session on local network via mDNS")
 
 	return cmd
+}
+
+func discoverCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "discover",
+		Short: "Scan local network for advertised sessions and join one",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Println("Scanning for sessions on local network...")
+
+			disc := &session.Discovery{}
+			sessions, err := disc.Discover(3 * time.Second)
+			if err != nil {
+				return fmt.Errorf("scan failed: %w", err)
+			}
+
+			if len(sessions) == 0 {
+				fmt.Println("No sessions found on local network.")
+				return nil
+			}
+
+			fmt.Println()
+			for i, s := range sessions {
+				access := "[open]"
+				if !s.Open {
+					access = fmt.Sprintf("[restricted: %s]", strings.Join(s.AllowUsers, ", "))
+				}
+				project := filepath.Base(s.Project)
+				fmt.Printf("  %d. %s — %s %s — %s\n", i+1, s.Host, project, access, s.JoinCmd)
+			}
+			fmt.Println()
+
+			var choice int
+			if len(sessions) == 1 {
+				fmt.Printf("Join session? [y/q]: ")
+				scanner := bufio.NewScanner(os.Stdin)
+				scanner.Scan()
+				input := strings.TrimSpace(scanner.Text())
+				if input != "y" && input != "Y" {
+					return nil
+				}
+				choice = 1
+			} else {
+				fmt.Printf("Join session [1-%d, q to quit]: ", len(sessions))
+				scanner := bufio.NewScanner(os.Stdin)
+				scanner.Scan()
+				input := strings.TrimSpace(scanner.Text())
+				if input == "q" || input == "Q" || input == "" {
+					return nil
+				}
+				n, err := strconv.Atoi(input)
+				if err != nil || n < 1 || n > len(sessions) {
+					return fmt.Errorf("invalid selection: %s", input)
+				}
+				choice = n
+			}
+
+			selected := sessions[choice-1]
+			fmt.Println("Joining session...")
+			return session.Join(selected.JoinCmd, "")
+		},
+	}
 }
 
 func joinCmd() *cobra.Command {

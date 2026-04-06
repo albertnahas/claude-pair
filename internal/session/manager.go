@@ -24,11 +24,12 @@ const (
 
 // HostConfig holds configuration for hosting a session.
 type HostConfig struct {
-	ProjectDir string
-	Record     bool
-	Name       string
-	AllowUsers []string
-	Web        bool
+	ProjectDir   string
+	Record       bool
+	Name         string
+	AllowUsers   []string
+	Web          bool
+	Discoverable bool
 }
 
 // SessionState persists the active session info for stop/status commands.
@@ -52,6 +53,7 @@ type Manager struct {
 	upterm *Upterm
 	rec    *recording.Recorder
 	web    *WebViewer
+	disc   *Discovery
 }
 
 // NewManager creates a session manager.
@@ -104,6 +106,17 @@ func (m *Manager) Host() error {
 	if err != nil {
 		m.upterm.Kill()
 		return fmt.Errorf("getting join command: %w", err)
+	}
+
+	// 4b. Start mDNS advertisement if requested
+	if m.cfg.Discoverable {
+		m.disc = &Discovery{}
+		if err := m.disc.Advertise(joinCmd, m.cfg.ProjectDir, m.cfg.AllowUsers); err != nil {
+			fmt.Printf("  Warning: mDNS advertisement failed: %v\n", err)
+			m.disc = nil
+		} else {
+			fmt.Println("  Advertising on local network via mDNS")
+		}
 	}
 
 	// 5. Wait for tmux session to be created, then configure it
@@ -219,6 +232,9 @@ func (m *Manager) waitTmuxReady(timeout time.Duration) error {
 }
 
 func (m *Manager) cleanup() {
+	if m.disc != nil {
+		m.disc.Stop()
+	}
 	if m.web != nil {
 		m.web.Stop()
 	}
