@@ -30,8 +30,11 @@ tar -xzf "$TMP/archive.tar.gz" -C "$TMP"
 mkdir -p "$INSTALL_DIR"
 cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod 755 "$INSTALL_DIR/$BINARY"
-# Remove macOS quarantine flag so Gatekeeper doesn't kill unsigned binary
-xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY" 2>/dev/null || true
+# macOS: remove quarantine flag and ad-hoc sign the binary
+if [ "$OS" = "darwin" ]; then
+  xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY" 2>/dev/null || true
+  codesign --force --sign - "$INSTALL_DIR/$BINARY" 2>/dev/null || true
+fi
 rm -rf "$TMP"
 echo "  $BINARY installed to $INSTALL_DIR/$BINARY"
 
