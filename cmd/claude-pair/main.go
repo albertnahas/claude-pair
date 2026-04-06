@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -58,11 +59,11 @@ func joinCmd() *cobra.Command {
 	var displayName string
 
 	cmd := &cobra.Command{
-		Use:   "join <link>",
-		Short: "Join a session as navigator (read-only)",
-		Args:  cobra.ExactArgs(1),
+		Use:   "join <ssh command...>",
+		Short: "Join a session as navigator",
+		Args:  cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return session.Join(args[0], displayName)
+			return session.Join(strings.Join(args, " "), displayName)
 		},
 	}
 
