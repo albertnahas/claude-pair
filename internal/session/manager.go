@@ -137,7 +137,7 @@ func (m *Manager) Host() error {
 	fmt.Println("  ║  Share this with your pair:                         ║")
 	fmt.Println("  ╚══════════════════════════════════════════════════════╝")
 	fmt.Println()
-	fmt.Printf("  Join command:\n    claude-pair join %s\n\n", joinCmd)
+	fmt.Printf("  Guest runs:\n    %s\n\n", joinCmd)
 	if recordingPath != "" {
 		fmt.Printf("  Recording to: %s\n\n", recordingPath)
 	}
@@ -248,7 +248,7 @@ func Status() error {
 	}
 	fmt.Printf("Started:    %s\n", state.StartedAt)
 	fmt.Printf("Project:    %s\n", state.ProjectDir)
-	fmt.Printf("Join:       claude-pair join %s\n", state.JoinCmd)
+	fmt.Printf("Join:       %s\n", state.JoinCmd)
 	if state.Recording != "" {
 		fmt.Printf("Recording:  %s\n", state.Recording)
 	}

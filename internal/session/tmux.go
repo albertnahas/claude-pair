@@ -59,7 +59,7 @@ func (t *Tmux) SetStatusBar(joinCmd string) error {
 		{"set-option", "-t", t.SessionName, "status-left", " claude-pair "},
 		{"set-option", "-t", t.SessionName, "status-left-style", "bg=#6c5ce7,fg=#ffffff,bold"},
 		{"set-option", "-t", t.SessionName, "status-left-length", "15"},
-		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Join: %s ", joinCmd)},
+		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Pair: %s ", joinCmd)},
 		{"set-option", "-t", t.SessionName, "status-right-style", "bg=#2d3436,fg=#74b9ff"},
 		{"set-option", "-t", t.SessionName, "status-right-length", "120"},
 	}
