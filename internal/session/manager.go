@@ -101,8 +101,11 @@ func (m *Manager) Host() error {
 		return fmt.Errorf("getting join command: %w", err)
 	}
 
-	// 5. Wait for tmux session to be created, then set up recording
+	// 5. Wait for tmux session to be created, then configure it
 	time.Sleep(2 * time.Second)
+	if err := m.tmux.SetStatusBar(joinCmd); err != nil {
+		fmt.Printf("  Warning: could not set tmux status bar: %v\n", err)
+	}
 	if m.rec != nil {
 		if err := m.tmux.PipePaneTo(recordingPath); err != nil {
 			fmt.Printf("  Warning: recording pipe-pane failed: %v\n", err)

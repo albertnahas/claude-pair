@@ -50,6 +50,27 @@ func (t *Tmux) AttachSession() error {
 	return cmd.Run()
 }
 
+// SetStatusBar configures the tmux status bar with a persistent message.
+func (t *Tmux) SetStatusBar(joinCmd string) error {
+	// Show join command in the bottom status bar so it's always visible
+	cmds := [][]string{
+		{"set-option", "-t", t.SessionName, "status", "on"},
+		{"set-option", "-t", t.SessionName, "status-style", "bg=#1a1a2e,fg=#e0e0e0"},
+		{"set-option", "-t", t.SessionName, "status-left", " claude-pair "},
+		{"set-option", "-t", t.SessionName, "status-left-style", "bg=#6c5ce7,fg=#ffffff,bold"},
+		{"set-option", "-t", t.SessionName, "status-left-length", "15"},
+		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Join: %s ", joinCmd)},
+		{"set-option", "-t", t.SessionName, "status-right-style", "bg=#2d3436,fg=#74b9ff"},
+		{"set-option", "-t", t.SessionName, "status-right-length", "120"},
+	}
+	for _, args := range cmds {
+		if err := run("tmux", args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // HasTmux checks if tmux is installed.
 func HasTmux() bool {
 	_, err := exec.LookPath("tmux")
