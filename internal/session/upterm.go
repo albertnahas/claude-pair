@@ -193,17 +193,10 @@ func (u *Upterm) GetSSHCommand() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// Build: ssh <sessionID>@host:port
 	// info.Host is like "ssh://uptermd.upterm.dev:22"
-	// info.SessionID is the token
 	host := strings.TrimPrefix(info.Host, "ssh://")
-	// Split host:port
 	hostPart := strings.Split(host, ":")[0]
-	port := "22"
-	if parts := strings.SplitN(host, ":", 2); len(parts) == 2 {
-		port = parts[1]
-	}
-	return fmt.Sprintf("ssh %s@%s -p %s", info.SessionID, hostPart, port), nil
+	return fmt.Sprintf("ssh %s@%s", info.SessionID, hostPart), nil
 }
 
 // Kill terminates the upterm session.
