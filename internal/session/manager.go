@@ -79,10 +79,9 @@ func (m *Manager) Host() error {
 		}
 	}
 
-	// 2. Start upterm hosting a tmux+claude session
+	// 2. Start upterm headless (it creates a detached tmux session)
 	fmt.Print("  Starting shared session via upterm... ")
-	proc, err := m.upterm.Host(tmuxName, m.cfg.ProjectDir, m.cfg.Name)
-	if err != nil {
+	if err := m.upterm.Host(tmuxName, m.cfg.ProjectDir, m.cfg.Name); err != nil {
 		return fmt.Errorf("\n  Failed: %w", err)
 	}
 	fmt.Println("started")
@@ -102,10 +101,9 @@ func (m *Manager) Host() error {
 		return fmt.Errorf("getting join command: %w", err)
 	}
 
-	// 5. Start pipe-pane for recording if enabled
+	// 5. Wait for tmux session to be created, then set up recording
+	time.Sleep(2 * time.Second)
 	if m.rec != nil {
-		// Wait briefly for tmux session to be created
-		time.Sleep(1 * time.Second)
 		if err := m.tmux.PipePaneTo(recordingPath); err != nil {
 			fmt.Printf("  Warning: recording pipe-pane failed: %v\n", err)
 		}
@@ -120,7 +118,7 @@ func (m *Manager) Host() error {
 		Recording:  recordingPath,
 		StartedAt:  time.Now().Format(time.RFC3339),
 		ProjectDir: m.cfg.ProjectDir,
-		PID:        proc.Process.Pid,
+		PID:        m.upterm.PID(),
 	}
 	if err := saveState(state); err != nil {
 		fmt.Printf("  Warning: could not save session state: %v\n", err)
@@ -146,22 +144,24 @@ func (m *Manager) Host() error {
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	fmt.Println("  Press Ctrl+C to end the session, or run: claude-pair stop")
+	fmt.Println("  Attaching to session...")
 	fmt.Println()
 
-	// Wait for upterm process to exit or signal
-	done := make(chan error, 1)
+	// Attach host to the tmux session (upterm runs in background)
+	attachDone := make(chan error, 1)
 	go func() {
-		done <- proc.Wait()
+		attachDone <- m.tmux.AttachSession()
 	}()
 
 	select {
 	case <-sigCh:
 		fmt.Println("\n  Shutting down session...")
 		m.cleanup()
-	case err := <-done:
+	case err := <-attachDone:
+		// Host detached from tmux or tmux session ended
 		m.cleanup()
 		if err != nil {
-			return nil // Normal exit when session ends
+			return nil
 		}
 	}
 
@@ -195,7 +195,13 @@ func Join(link string, displayName string) error {
 
 	fmt.Printf("Joining session as %s...\n", nameOrDefault(displayName, "navigator"))
 
-	cmd := exec.Command("ssh", sshArgs...)
+	// Auto-accept host key to avoid the fingerprint prompt
+	fullArgs := append([]string{
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", "UserKnownHostsFile=/dev/null",
+	}, sshArgs...)
+
+	cmd := exec.Command("ssh", fullArgs...)
 	cmd.Stdin = stdinFd()
 	cmd.Stdout = stdoutFd()
 	cmd.Stderr = stderrFd()
