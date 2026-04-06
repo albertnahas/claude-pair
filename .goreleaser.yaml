@@ -2,8 +2,7 @@ version: 2
 project_name: claude-pair
 
 builds:
-  - dir: .
-    main: ./cmd/claude-pair
+  - main: ./cmd/claude-pair/
     binary: claude-pair
     ldflags:
       - -s -w
