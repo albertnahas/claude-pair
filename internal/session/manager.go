@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	stateDir     = ".claude-pair"
-	stateFile    = "active-session.json"
+	stateDir      = ".claude-pair"
+	stateFile     = "active-session.json"
 	sessionPrefix = "claude-pair-"
 )
 
@@ -30,34 +30,33 @@ type HostConfig struct {
 
 // SessionState persists the active session info for stop/status commands.
 type SessionState struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	TmuxName   string `json:"tmux_name"`
-	SocketPath string `json:"socket_path"`
-	SSHURL     string `json:"ssh_url"`
-	ROURL      string `json:"ro_url"`
-	Recording  string `json:"recording,omitempty"`
-	StartedAt  string `json:"started_at"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	TmuxName  string `json:"tmux_name"`
+	JoinCmd   string `json:"join_cmd"`
+	Recording string `json:"recording,omitempty"`
+	StartedAt string `json:"started_at"`
 	ProjectDir string `json:"project_dir"`
+	PID       int    `json:"pid,omitempty"`
 }
 
 // Manager orchestrates the session lifecycle.
 type Manager struct {
-	cfg   HostConfig
-	id    string
-	tmux  *Tmux
-	tmate *Tmate
-	rec   *recording.Recorder
+	cfg    HostConfig
+	id     string
+	tmux   *Tmux
+	upterm *Upterm
+	rec    *recording.Recorder
 }
 
 // NewManager creates a session manager.
 func NewManager(cfg HostConfig) (*Manager, error) {
 	id := generateID()
 	return &Manager{
-		cfg:   cfg,
-		id:    id,
-		tmux:  NewTmux(sessionPrefix + id),
-		tmate: NewTmate(id),
+		cfg:    cfg,
+		id:     id,
+		tmux:   NewTmux(sessionPrefix + id),
+		upterm: NewUpterm(id),
 	}, nil
 }
 
@@ -65,26 +64,9 @@ func NewManager(cfg HostConfig) (*Manager, error) {
 func (m *Manager) Host() error {
 	fmt.Println("Starting claude-pair session...")
 
-	// 1. Start tmate (creates its own tmux-like session)
-	fmt.Print("  Connecting to tmate relay... ")
-	if err := m.tmate.Start(); err != nil {
-		return fmt.Errorf("\n  Failed: %w", err)
-	}
-	fmt.Println("done")
+	tmuxName := sessionPrefix + m.id
 
-	// 2. Get sharing URLs
-	sshURL, err := m.tmate.GetSSHURL()
-	if err != nil {
-		m.tmate.Kill()
-		return fmt.Errorf("getting SSH URL: %w", err)
-	}
-	roURL, err := m.tmate.GetROURL()
-	if err != nil {
-		m.tmate.Kill()
-		return fmt.Errorf("getting read-only URL: %w", err)
-	}
-
-	// 3. Start recording if enabled
+	// 1. Start recording if enabled
 	var recordingPath string
 	if m.cfg.Record {
 		recDir := filepath.Join(homeDir(), stateDir, "recordings")
@@ -94,44 +76,57 @@ func (m *Manager) Host() error {
 		if err := m.rec.WriteHeader(); err != nil {
 			fmt.Printf("  Warning: recording failed to start: %v\n", err)
 			m.rec = nil
-		} else {
-			// Start piping tmate output to the recording file
-			if err := run("tmate", "-S", m.tmate.SocketPath, "pipe-pane", "-o",
-				fmt.Sprintf("exec cat >> %s", recordingPath)); err != nil {
-				fmt.Printf("  Warning: pipe-pane failed: %v\n", err)
-			}
 		}
 	}
 
-	// 4. Launch Claude Code inside tmate
-	fmt.Print("  Launching Claude Code... ")
-	claudeCmd := fmt.Sprintf("cd %s && claude", m.cfg.ProjectDir)
-	if m.cfg.Name != "" {
-		claudeCmd = fmt.Sprintf("cd %s && claude --name %q", m.cfg.ProjectDir, m.cfg.Name)
+	// 2. Start upterm hosting a tmux+claude session
+	fmt.Print("  Starting shared session via upterm... ")
+	proc, err := m.upterm.Host(tmuxName, m.cfg.ProjectDir, m.cfg.Name)
+	if err != nil {
+		return fmt.Errorf("\n  Failed: %w", err)
 	}
-	if err := m.tmate.SendKeys(claudeCmd); err != nil {
-		m.tmate.Kill()
-		return fmt.Errorf("launching claude: %w", err)
+	fmt.Println("started")
+
+	// 3. Wait for upterm to connect to relay
+	fmt.Print("  Connecting to relay... ")
+	if err := m.upterm.WaitReady(); err != nil {
+		m.upterm.Kill()
+		return fmt.Errorf("\n  Failed: %w", err)
 	}
 	fmt.Println("done")
 
-	// 5. Save session state
+	// 4. Get the join command
+	joinCmd, err := m.upterm.GetSSHCommand()
+	if err != nil {
+		m.upterm.Kill()
+		return fmt.Errorf("getting join command: %w", err)
+	}
+
+	// 5. Start pipe-pane for recording if enabled
+	if m.rec != nil {
+		// Wait briefly for tmux session to be created
+		time.Sleep(1 * time.Second)
+		if err := m.tmux.PipePaneTo(recordingPath); err != nil {
+			fmt.Printf("  Warning: recording pipe-pane failed: %v\n", err)
+		}
+	}
+
+	// 6. Save session state
 	state := SessionState{
 		ID:         m.id,
 		Name:       m.cfg.Name,
-		TmuxName:   sessionPrefix + m.id,
-		SocketPath: m.tmate.SocketPath,
-		SSHURL:     sshURL,
-		ROURL:      roURL,
+		TmuxName:   tmuxName,
+		JoinCmd:    joinCmd,
 		Recording:  recordingPath,
 		StartedAt:  time.Now().Format(time.RFC3339),
 		ProjectDir: m.cfg.ProjectDir,
+		PID:        proc.Process.Pid,
 	}
 	if err := saveState(state); err != nil {
 		fmt.Printf("  Warning: could not save session state: %v\n", err)
 	}
 
-	// 6. Print invite info
+	// 7. Print invite info
 	fmt.Println()
 	fmt.Println("  ╔══════════════════════════════════════════════════════╗")
 	fmt.Println("  ║              claude-pair session ready               ║")
@@ -141,29 +136,22 @@ func (m *Manager) Host() error {
 	fmt.Println("  ║  Share this with your pair:                         ║")
 	fmt.Println("  ╚══════════════════════════════════════════════════════╝")
 	fmt.Println()
-	fmt.Printf("  Navigator (read-only):\n    claude-pair join %s\n\n", roURL)
-	fmt.Printf("  Driver (full control):\n    claude-pair join %s\n\n", sshURL)
+	fmt.Printf("  Join command:\n    claude-pair join %s\n\n", joinCmd)
 	if recordingPath != "" {
 		fmt.Printf("  Recording to: %s\n\n", recordingPath)
 	}
 
-	// 7. Handle signals for clean shutdown
+	// 8. Handle signals for clean shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
 	fmt.Println("  Press Ctrl+C to end the session, or run: claude-pair stop")
-	fmt.Println("  Attaching to session...\n")
+	fmt.Println()
 
-	// Attach host to the tmate session
-	attachCmd := exec.Command("tmate", "-S", m.tmate.SocketPath, "attach-session")
-	attachCmd.Stdin = stdinFd()
-	attachCmd.Stdout = stdoutFd()
-	attachCmd.Stderr = stderrFd()
-
-	// Run attach in background so we can catch signals
+	// Wait for upterm process to exit or signal
 	done := make(chan error, 1)
 	go func() {
-		done <- attachCmd.Run()
+		done <- proc.Wait()
 	}()
 
 	select {
@@ -171,7 +159,6 @@ func (m *Manager) Host() error {
 		fmt.Println("\n  Shutting down session...")
 		m.cleanup()
 	case err := <-done:
-		// Session ended (user detached or tmate exited)
 		m.cleanup()
 		if err != nil {
 			return nil // Normal exit when session ends
@@ -185,15 +172,16 @@ func (m *Manager) cleanup() {
 	if m.rec != nil {
 		m.rec.Close()
 	}
-	m.tmate.Kill()
+	m.upterm.Kill()
+	// Kill the tmux session too
+	m.tmux.KillSession()
 	removeState()
 	fmt.Println("  Session ended.")
 }
 
-// Join connects to a shared session as navigator.
+// Join connects to a shared session.
 func Join(link string, displayName string) error {
-	// The link is a tmate SSH URL like: ssh XYZ@lon1.tmate.io
-	// Parse it and connect via SSH
+	// The link is an SSH command like: ssh TOKEN@uptermd.upterm.dev
 	parts := strings.Fields(link)
 	var sshArgs []string
 
@@ -202,7 +190,7 @@ func Join(link string, displayName string) error {
 	} else if strings.Contains(link, "@") {
 		sshArgs = []string{link}
 	} else {
-		return fmt.Errorf("invalid link format: expected tmate SSH URL (e.g., ssh XYZ@lon1.tmate.io)")
+		return fmt.Errorf("invalid link: expected SSH command (e.g., ssh TOKEN@uptermd.upterm.dev)")
 	}
 
 	fmt.Printf("Joining session as %s...\n", nameOrDefault(displayName, "navigator"))
@@ -221,10 +209,18 @@ func Stop() error {
 		return fmt.Errorf("no active session found")
 	}
 
-	tmate := &Tmate{SocketPath: state.SocketPath, sessionID: state.ID}
-	tmate.Kill()
-	removeState()
+	// Kill the upterm process
+	if state.PID > 0 {
+		if proc, err := os.FindProcess(state.PID); err == nil {
+			_ = proc.Signal(syscall.SIGTERM)
+		}
+	}
 
+	// Kill the tmux session
+	tmux := NewTmux(state.TmuxName)
+	tmux.KillSession()
+
+	removeState()
 	fmt.Printf("Session %s stopped.\n", state.ID)
 	return nil
 }
@@ -243,8 +239,7 @@ func Status() error {
 	}
 	fmt.Printf("Started:    %s\n", state.StartedAt)
 	fmt.Printf("Project:    %s\n", state.ProjectDir)
-	fmt.Printf("Navigator:  claude-pair join %s\n", state.ROURL)
-	fmt.Printf("Driver:     claude-pair join %s\n", state.SSHURL)
+	fmt.Printf("Join:       claude-pair join %s\n", state.JoinCmd)
 	if state.Recording != "" {
 		fmt.Printf("Recording:  %s\n", state.Recording)
 	}
@@ -259,7 +254,7 @@ func Doctor() {
 		hint string
 	}{
 		{"tmux", HasTmux(), "brew install tmux"},
-		{"tmate", HasTmate(), "brew install tmate"},
+		{"upterm", HasUpterm(), "brew install --cask owenthereal/upterm/upterm"},
 		{"claude", HasClaude(), "See https://docs.anthropic.com/en/docs/claude-code"},
 		{"ssh", hasSSH(), "Should be pre-installed on macOS/Linux"},
 	}
@@ -288,7 +283,6 @@ func Doctor() {
 // --- helpers ---
 
 func generateID() string {
-	// Simple 6-char hex ID from timestamp + pid
 	return fmt.Sprintf("%x", time.Now().UnixNano()%0xFFFFFF)
 }
 
