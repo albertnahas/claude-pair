@@ -27,18 +27,21 @@ type HostConfig struct {
 	ProjectDir string
 	Record     bool
 	Name       string
+	AllowUsers []string
+	Web        bool
 }
 
 // SessionState persists the active session info for stop/status commands.
 type SessionState struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	TmuxName  string `json:"tmux_name"`
-	JoinCmd   string `json:"join_cmd"`
-	Recording string `json:"recording,omitempty"`
-	StartedAt string `json:"started_at"`
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	TmuxName   string `json:"tmux_name"`
+	JoinCmd    string `json:"join_cmd"`
+	Recording  string `json:"recording,omitempty"`
+	StartedAt  string `json:"started_at"`
 	ProjectDir string `json:"project_dir"`
-	PID       int    `json:"pid,omitempty"`
+	PID        int    `json:"pid,omitempty"`
+	WebURL     string `json:"web_url,omitempty"`
 }
 
 // Manager orchestrates the session lifecycle.
@@ -48,6 +51,7 @@ type Manager struct {
 	tmux   *Tmux
 	upterm *Upterm
 	rec    *recording.Recorder
+	web    *WebViewer
 }
 
 // NewManager creates a session manager.
@@ -82,7 +86,7 @@ func (m *Manager) Host() error {
 
 	// 2. Start upterm headless (it creates a detached tmux session)
 	fmt.Print("  Starting shared session via upterm... ")
-	if err := m.upterm.Host(tmuxName, m.cfg.ProjectDir, m.cfg.Name); err != nil {
+	if err := m.upterm.Host(tmuxName, m.cfg.ProjectDir, m.cfg.Name, m.cfg.AllowUsers); err != nil {
 		return fmt.Errorf("\n  Failed: %w", err)
 	}
 	fmt.Println("started")
@@ -106,12 +110,31 @@ func (m *Manager) Host() error {
 	if err := m.waitTmuxReady(10 * time.Second); err != nil {
 		fmt.Printf("  Warning: tmux session not detected: %v\n", err)
 	}
-	if err := m.tmux.SetStatusBar(joinCmd); err != nil {
+	if err := m.tmux.SetStatusBar(joinCmd, m.cfg.AllowUsers); err != nil {
 		fmt.Printf("  Warning: could not set tmux status bar: %v\n", err)
 	}
 	if m.rec != nil {
 		if err := m.tmux.PipePaneTo(recordingPath); err != nil {
 			fmt.Printf("  Warning: recording pipe-pane failed: %v\n", err)
+		}
+	}
+
+	// 5b. Start web viewer if requested
+	var webURL string
+	if m.cfg.Web {
+		if !HasTtyd() {
+			fmt.Println("  Warning: ttyd not found — skipping web viewer (brew install ttyd)")
+		} else {
+			fmt.Print("  Starting web viewer via ttyd... ")
+			m.web = &WebViewer{}
+			url, err := m.web.Start(tmuxName)
+			if err != nil {
+				fmt.Printf("Warning: %v\n", err)
+				m.web = nil
+			} else {
+				webURL = url
+				fmt.Println("started")
+			}
 		}
 	}
 
@@ -125,6 +148,7 @@ func (m *Manager) Host() error {
 		StartedAt:  time.Now().Format(time.RFC3339),
 		ProjectDir: m.cfg.ProjectDir,
 		PID:        m.upterm.PID(),
+		WebURL:     webURL,
 	}
 	if err := saveState(state); err != nil {
 		fmt.Printf("  Warning: could not save session state: %v\n", err)
@@ -137,10 +161,19 @@ func (m *Manager) Host() error {
 	fmt.Println("  ╠══════════════════════════════════════════════════════╣")
 	fmt.Printf("  ║  Session: %-42s ║\n", m.id)
 	fmt.Println("  ╠══════════════════════════════════════════════════════╣")
+	if len(m.cfg.AllowUsers) > 0 {
+		fmt.Printf("  ║  Access:  restricted to: %-27s ║\n", strings.Join(m.cfg.AllowUsers, ", "))
+	} else {
+		fmt.Println("  ║  Access:  open (anyone with the link can join)       ║")
+	}
+	fmt.Println("  ╠══════════════════════════════════════════════════════╣")
 	fmt.Println("  ║  Share this with your pair:                         ║")
 	fmt.Println("  ╚══════════════════════════════════════════════════════╝")
 	fmt.Println()
 	fmt.Printf("  Guest runs:\n    %s\n\n", joinCmd)
+	if webURL != "" {
+		fmt.Printf("  Web viewer:   %s\n\n", webURL)
+	}
 	if recordingPath != "" {
 		fmt.Printf("  Recording to: %s\n\n", recordingPath)
 	}
@@ -186,6 +219,9 @@ func (m *Manager) waitTmuxReady(timeout time.Duration) error {
 }
 
 func (m *Manager) cleanup() {
+	if m.web != nil {
+		m.web.Stop()
+	}
 	if m.rec != nil {
 		m.rec.Close()
 	}
@@ -263,6 +299,9 @@ func Status() error {
 	fmt.Printf("Started:    %s\n", state.StartedAt)
 	fmt.Printf("Project:    %s\n", state.ProjectDir)
 	fmt.Printf("Join:       %s\n", state.JoinCmd)
+	if state.WebURL != "" {
+		fmt.Printf("Web:        %s\n", state.WebURL)
+	}
 	if state.Recording != "" {
 		fmt.Printf("Recording:  %s\n", state.Recording)
 	}
@@ -271,7 +310,7 @@ func Status() error {
 
 // Doctor checks all dependencies.
 func Doctor() {
-	checks := []struct {
+	required := []struct {
 		name string
 		ok   bool
 		hint string
@@ -283,7 +322,7 @@ func Doctor() {
 	}
 
 	allOK := true
-	for _, c := range checks {
+	for _, c := range required {
 		status := "OK"
 		if !c.ok {
 			status = "MISSING"
@@ -296,10 +335,18 @@ func Doctor() {
 		fmt.Println()
 	}
 
+	ttydStatus := "not installed"
+	if HasTtyd() {
+		ttydStatus = "OK"
+	}
+	fmt.Printf("\n  Optional:\n")
+	fmt.Printf("  %-10s %-15s (required for --web; install: brew install ttyd)\n", "ttyd", ttydStatus)
+
+	fmt.Println()
 	if allOK {
-		fmt.Println("\n  All dependencies satisfied. Ready to pair!")
+		fmt.Println("  All required dependencies satisfied. Ready to pair!")
 	} else {
-		fmt.Println("\n  Install missing dependencies before using claude-pair.")
+		fmt.Println("  Install missing dependencies before using claude-pair.")
 	}
 }
 

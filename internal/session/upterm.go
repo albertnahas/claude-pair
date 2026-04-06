@@ -43,7 +43,8 @@ func NewUpterm(sessionID string) *Upterm {
 
 // Host starts an upterm session that creates a tmux session with claude.
 // Upterm runs detached (no terminal) so the host can attach to tmux separately.
-func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string) error {
+// allowUsers restricts access to those GitHub usernames via their SSH public keys.
+func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string, allowUsers []string) error {
 	claudeCmd := "claude"
 	if claudeName != "" {
 		claudeCmd = fmt.Sprintf("claude --name %s", shellescape(claudeName))
@@ -59,12 +60,11 @@ func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string) error {
 	// Guests get read-only attach; the host attaches normally via AttachSession.
 	forceCmd := fmt.Sprintf("tmux attach-session -r -t %s", shellescape(tmuxSessionName))
 
-	args := []string{
-		"host",
-		"--accept",
-		"--force-command", forceCmd,
-		"--", "bash", "-c", shellScript,
+	args := []string{"host", "--accept", "--force-command", forceCmd}
+	for _, user := range allowUsers {
+		args = append(args, "--github-user", user)
 	}
+	args = append(args, "--", "bash", "-c", shellScript)
 
 	logFile, err := os.Create(u.logPath)
 	if err != nil {

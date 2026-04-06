@@ -25,8 +25,10 @@ func main() {
 
 func hostCmd() *cobra.Command {
 	var (
-		noRecord bool
-		name     string
+		noRecord   bool
+		name       string
+		allowUsers []string
+		web        bool
 	)
 
 	cmd := &cobra.Command{
@@ -37,6 +39,8 @@ func hostCmd() *cobra.Command {
 				ProjectDir: mustGetwd(),
 				Record:     !noRecord,
 				Name:       name,
+				AllowUsers: allowUsers,
+				Web:        web,
 			}
 			mgr, err := session.NewManager(cfg)
 			if err != nil {
@@ -48,6 +52,8 @@ func hostCmd() *cobra.Command {
 
 	cmd.Flags().BoolVar(&noRecord, "no-record", false, "Disable session recording")
 	cmd.Flags().StringVar(&name, "name", "", "Human-readable session name")
+	cmd.Flags().StringSliceVar(&allowUsers, "allow", nil, "Restrict access to GitHub users (e.g., --allow alice --allow bob)")
+	cmd.Flags().BoolVar(&web, "web", false, "Launch a browser-accessible viewer via ttyd")
 
 	return cmd
 }

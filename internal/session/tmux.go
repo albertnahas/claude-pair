@@ -52,13 +52,18 @@ func (t *Tmux) AttachSession() error {
 
 // SetStatusBar configures the tmux status bar with a persistent message and
 // locks down the session so guests (read-only attach) cannot send key bindings.
-func (t *Tmux) SetStatusBar(joinCmd string) error {
+// allowUsers, if non-empty, is displayed as a restriction indicator.
+func (t *Tmux) SetStatusBar(joinCmd string, allowUsers []string) error {
+	accessLabel := "open"
+	if len(allowUsers) > 0 {
+		accessLabel = "restricted: " + strings.Join(allowUsers, ", ")
+	}
 	cmds := [][]string{
 		{"set-option", "-t", t.SessionName, "status", "on"},
 		{"set-option", "-t", t.SessionName, "status-style", "bg=#1a1a2e,fg=#e0e0e0"},
-		{"set-option", "-t", t.SessionName, "status-left", " claude-pair "},
+		{"set-option", "-t", t.SessionName, "status-left", fmt.Sprintf(" claude-pair [%s] ", accessLabel)},
 		{"set-option", "-t", t.SessionName, "status-left-style", "bg=#6c5ce7,fg=#ffffff,bold"},
-		{"set-option", "-t", t.SessionName, "status-left-length", "15"},
+		{"set-option", "-t", t.SessionName, "status-left-length", "60"},
 		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Pair: %s ", joinCmd)},
 		{"set-option", "-t", t.SessionName, "status-right-style", "bg=#2d3436,fg=#74b9ff"},
 		{"set-option", "-t", t.SessionName, "status-right-length", "120"},
