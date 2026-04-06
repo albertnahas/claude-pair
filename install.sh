@@ -30,6 +30,8 @@ tar -xzf "$TMP/archive.tar.gz" -C "$TMP"
 mkdir -p "$INSTALL_DIR"
 cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod 755 "$INSTALL_DIR/$BINARY"
+# Remove macOS quarantine flag so Gatekeeper doesn't kill unsigned binary
+xattr -d com.apple.quarantine "$INSTALL_DIR/$BINARY" 2>/dev/null || true
 rm -rf "$TMP"
 echo "  $BINARY installed to $INSTALL_DIR/$BINARY"
 
