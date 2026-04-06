@@ -7,6 +7,7 @@ Share a live Claude Code session with a collaborator over SSH.
 ## What it does
 
 - Share a live Claude Code session — guest joins with a single `ssh` command, no install needed
+- Discover sessions on your local network automatically (`--discoverable` + `claude-pair discover`)
 - Restrict access to specific GitHub users via SSH key verification (`--allow`)
 - Browser-based viewer via ttyd (`--web`) for non-technical observers
 - Session recording in asciinema-compatible format
@@ -23,6 +24,11 @@ claude-pair host
 claude-pair host --allow alice --allow bob
 ```
 
+**Make it discoverable on your local network:**
+```sh
+claude-pair host --discoverable
+```
+
 **Add a browser-accessible viewer:**
 ```sh
 claude-pair host --web
@@ -31,6 +37,11 @@ claude-pair host --web
 **Guest** (joins with the SSH command the host shares):
 ```sh
 ssh TOKEN@uptermd.upterm.dev
+```
+
+Or discover sessions on the local network:
+```sh
+claude-pair discover
 ```
 
 ## Install
