@@ -25,9 +25,8 @@ func main() {
 
 func hostCmd() *cobra.Command {
 	var (
-		noRecord  bool
-		maxGuests int
-		name      string
+		noRecord bool
+		name     string
 	)
 
 	cmd := &cobra.Command{
@@ -37,7 +36,6 @@ func hostCmd() *cobra.Command {
 			cfg := session.HostConfig{
 				ProjectDir: mustGetwd(),
 				Record:     !noRecord,
-				MaxGuests:  maxGuests,
 				Name:       name,
 			}
 			mgr, err := session.NewManager(cfg)
@@ -49,26 +47,21 @@ func hostCmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&noRecord, "no-record", false, "Disable session recording")
-	cmd.Flags().IntVar(&maxGuests, "max-guests", 3, "Maximum concurrent navigators")
 	cmd.Flags().StringVar(&name, "name", "", "Human-readable session name")
 
 	return cmd
 }
 
 func joinCmd() *cobra.Command {
-	var displayName string
-
 	cmd := &cobra.Command{
-		Use:   "join <ssh command...>",
-		Short: "Join a session as navigator",
-		Args:  cobra.MinimumNArgs(1),
+		Use:                "join <ssh command...>",
+		Short:              "Join a session as navigator",
+		Args:               cobra.MinimumNArgs(1),
+		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return session.Join(strings.Join(args, " "), displayName)
+			return session.Join(strings.Join(args, " "), "")
 		},
 	}
-
-	cmd.Flags().StringVar(&displayName, "name", "", "Your display name")
-
 	return cmd
 }
 

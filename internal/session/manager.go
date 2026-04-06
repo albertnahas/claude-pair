@@ -1,6 +1,8 @@
 package session
 
 import (
+	crypto_rand "crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -24,7 +26,6 @@ const (
 type HostConfig struct {
 	ProjectDir string
 	Record     bool
-	MaxGuests  int
 	Name       string
 }
 
@@ -102,7 +103,9 @@ func (m *Manager) Host() error {
 	}
 
 	// 5. Wait for tmux session to be created, then configure it
-	time.Sleep(2 * time.Second)
+	if err := m.waitTmuxReady(10 * time.Second); err != nil {
+		fmt.Printf("  Warning: tmux session not detected: %v\n", err)
+	}
 	if err := m.tmux.SetStatusBar(joinCmd); err != nil {
 		fmt.Printf("  Warning: could not set tmux status bar: %v\n", err)
 	}
@@ -169,6 +172,17 @@ func (m *Manager) Host() error {
 	}
 
 	return nil
+}
+
+func (m *Manager) waitTmuxReady(timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if m.tmux.SessionExists() {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return fmt.Errorf("tmux session %s not ready after %s", m.tmux.SessionName, timeout)
 }
 
 func (m *Manager) cleanup() {
@@ -292,7 +306,9 @@ func Doctor() {
 // --- helpers ---
 
 func generateID() string {
-	return fmt.Sprintf("%x", time.Now().UnixNano()%0xFFFFFF)
+	b := make([]byte, 6)
+	_, _ = crypto_rand.Read(b)
+	return hex.EncodeToString(b)
 }
 
 func homeDir() string {
@@ -312,7 +328,7 @@ func saveState(s SessionState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(statePath(), data, 0o644)
+	return os.WriteFile(statePath(), data, 0o600)
 }
 
 func loadState() (*SessionState, error) {

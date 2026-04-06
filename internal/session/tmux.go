@@ -50,9 +50,9 @@ func (t *Tmux) AttachSession() error {
 	return cmd.Run()
 }
 
-// SetStatusBar configures the tmux status bar with a persistent message.
+// SetStatusBar configures the tmux status bar with a persistent message and
+// locks down the session so guests (read-only attach) cannot send key bindings.
 func (t *Tmux) SetStatusBar(joinCmd string) error {
-	// Show join command in the bottom status bar so it's always visible
 	cmds := [][]string{
 		{"set-option", "-t", t.SessionName, "status", "on"},
 		{"set-option", "-t", t.SessionName, "status-style", "bg=#1a1a2e,fg=#e0e0e0"},
@@ -62,13 +62,16 @@ func (t *Tmux) SetStatusBar(joinCmd string) error {
 		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Pair: %s ", joinCmd)},
 		{"set-option", "-t", t.SessionName, "status-right-style", "bg=#2d3436,fg=#74b9ff"},
 		{"set-option", "-t", t.SessionName, "status-right-length", "120"},
+		// Disable prefix key so guests can't trigger tmux commands via key bindings.
+		{"set-option", "-g", "prefix", "None"},
 	}
 	for _, args := range cmds {
 		if err := run("tmux", args...); err != nil {
 			return err
 		}
 	}
-	return nil
+	// Unbind all keys to fully lock down key binding escape paths.
+	return run("tmux", "unbind-key", "-a")
 }
 
 // HasTmux checks if tmux is installed.

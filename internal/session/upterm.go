@@ -26,6 +26,8 @@ type Upterm struct {
 	adminSocket string
 	proc        *exec.Cmd
 	logPath     string
+	logFile     *os.File
+	died        chan struct{}
 }
 
 func NewUpterm(sessionID string) *Upterm {
@@ -35,6 +37,7 @@ func NewUpterm(sessionID string) *Upterm {
 	return &Upterm{
 		sessionID: sessionID,
 		logPath:   filepath.Join(logDir, sessionID+".log"),
+		died:      make(chan struct{}),
 	}
 }
 
@@ -43,16 +46,18 @@ func NewUpterm(sessionID string) *Upterm {
 func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string) error {
 	claudeCmd := "claude"
 	if claudeName != "" {
-		claudeCmd = fmt.Sprintf("claude --name %q", claudeName)
+		claudeCmd = fmt.Sprintf("claude --name %s", shellescape(claudeName))
 	}
 
 	// upterm will run tmux in detached mode, then wait forever.
 	// The host and guests all attach to the same tmux session independently.
+	// Use %q-style shell quoting for projectDir and tmuxSessionName to handle spaces.
 	shellScript := fmt.Sprintf(
-		`cd %s && tmux new-session -d -s %s '%s' && while tmux has-session -t %s 2>/dev/null; do sleep 1; done`,
-		projectDir, tmuxSessionName, claudeCmd, tmuxSessionName,
+		`cd %s && tmux new-session -d -s %s %s && while tmux has-session -t %s 2>/dev/null; do sleep 1; done`,
+		shellescape(projectDir), shellescape(tmuxSessionName), shellescape(claudeCmd), shellescape(tmuxSessionName),
 	)
-	forceCmd := fmt.Sprintf("tmux attach-session -t %s", tmuxSessionName)
+	// Guests get read-only attach; the host attaches normally via AttachSession.
+	forceCmd := fmt.Sprintf("tmux attach-session -r -t %s", shellescape(tmuxSessionName))
 
 	args := []string{
 		"host",
@@ -76,28 +81,43 @@ func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string) error {
 		return fmt.Errorf("starting upterm: %w", err)
 	}
 
-	// Don't close logFile — upterm continues writing to it.
-	// It will be cleaned up when the process exits.
+	u.logFile = logFile
+
+	// Monitor process death so WaitReady can detect early exit.
+	go func() {
+		_ = u.proc.Wait()
+		close(u.died)
+	}()
+
 	return nil
+}
+
+// shellescape wraps a string in single quotes, escaping any embedded single quotes.
+func shellescape(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // WaitReady polls until upterm session info is available or the process dies.
 func (u *Upterm) WaitReady() error {
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		// Check if process died
-		if u.proc.ProcessState != nil {
+	deadline := time.NewTimer(30 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(1 * time.Second)
+	defer tick.Stop()
+
+	for {
+		select {
+		case <-u.died:
 			logs, _ := os.ReadFile(u.logPath)
 			return fmt.Errorf("upterm exited unexpectedly:\n%s", string(logs))
+		case <-deadline.C:
+			logs, _ := os.ReadFile(u.logPath)
+			return fmt.Errorf("upterm did not become ready within 30s. Logs:\n%s", string(logs))
+		case <-tick.C:
+			if _, err := u.GetSessionInfo(); err == nil {
+				return nil
+			}
 		}
-
-		if _, err := u.GetSessionInfo(); err == nil {
-			return nil
-		}
-		time.Sleep(1 * time.Second)
 	}
-	logs, _ := os.ReadFile(u.logPath)
-	return fmt.Errorf("upterm did not become ready within 30s. Logs:\n%s", string(logs))
 }
 
 // GetSessionInfo returns the current session info by finding the admin socket.
@@ -122,6 +142,7 @@ func (u *Upterm) GetSessionInfo() (*UptermSession, error) {
 }
 
 // findAdminSocket discovers the upterm admin socket path.
+// It returns the most recently modified .sock file to avoid picking a stale socket.
 func (u *Upterm) findAdminSocket() (string, error) {
 	// If we already found it, reuse
 	if u.adminSocket != "" {
@@ -130,19 +151,33 @@ func (u *Upterm) findAdminSocket() (string, error) {
 		}
 	}
 
-	// Scan the upterm socket directory for .sock files
 	socketDir := uptermSocketDir()
 	entries, err := os.ReadDir(socketDir)
 	if err != nil {
 		return "", fmt.Errorf("reading socket dir %s: %w", socketDir, err)
 	}
 
+	var (
+		bestPath    string
+		bestModTime time.Time
+	)
 	for _, e := range entries {
-		if filepath.Ext(e.Name()) == ".sock" {
-			return filepath.Join(socketDir, e.Name()), nil
+		if filepath.Ext(e.Name()) != ".sock" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().After(bestModTime) {
+			bestModTime = info.ModTime()
+			bestPath = filepath.Join(socketDir, e.Name())
 		}
 	}
-	return "", fmt.Errorf("no upterm admin socket found in %s", socketDir)
+	if bestPath == "" {
+		return "", fmt.Errorf("no upterm admin socket found in %s", socketDir)
+	}
+	return bestPath, nil
 }
 
 func uptermSocketDir() string {
@@ -175,13 +210,16 @@ func (u *Upterm) GetSSHCommand() (string, error) {
 func (u *Upterm) Kill() {
 	if u.proc != nil && u.proc.Process != nil {
 		_ = u.proc.Process.Signal(os.Interrupt)
-		done := make(chan error, 1)
-		go func() { done <- u.proc.Wait() }()
 		select {
-		case <-done:
+		case <-u.died:
 		case <-time.After(3 * time.Second):
 			_ = u.proc.Process.Kill()
+			<-u.died
 		}
+	}
+	if u.logFile != nil {
+		_ = u.logFile.Close()
+		u.logFile = nil
 	}
 }
 
