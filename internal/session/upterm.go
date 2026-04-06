@@ -57,8 +57,8 @@ func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string, allowUsers
 		`cd %s && tmux new-session -d -s %s %s && while tmux has-session -t %s 2>/dev/null; do sleep 1; done`,
 		shellescape(projectDir), shellescape(tmuxSessionName), shellescape(claudeCmd), shellescape(tmuxSessionName),
 	)
-	// Guests get read-only attach; the host attaches normally via AttachSession.
-	forceCmd := fmt.Sprintf("tmux attach-session -r -t %s", shellescape(tmuxSessionName))
+	// Guests attach to the same tmux session as the host.
+	forceCmd := fmt.Sprintf("tmux attach-session -t %s", shellescape(tmuxSessionName))
 
 	args := []string{"host", "--accept", "--force-command", forceCmd}
 	for _, user := range allowUsers {

@@ -67,16 +67,13 @@ func (t *Tmux) SetStatusBar(joinCmd string, allowUsers []string) error {
 		{"set-option", "-t", t.SessionName, "status-right", fmt.Sprintf(" Pair: %s ", joinCmd)},
 		{"set-option", "-t", t.SessionName, "status-right-style", "bg=#2d3436,fg=#74b9ff"},
 		{"set-option", "-t", t.SessionName, "status-right-length", "120"},
-		// Disable prefix key so guests can't trigger tmux commands via key bindings.
-		{"set-option", "-g", "prefix", "None"},
 	}
 	for _, args := range cmds {
 		if err := run("tmux", args...); err != nil {
 			return err
 		}
 	}
-	// Unbind all keys to fully lock down key binding escape paths.
-	return run("tmux", "unbind-key", "-a")
+	return nil
 }
 
 // HasTmux checks if tmux is installed.
