@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -32,9 +33,8 @@ func NewUpterm(sessionID string) *Upterm {
 	_ = os.MkdirAll(logDir, 0o755)
 
 	return &Upterm{
-		sessionID:   sessionID,
-		adminSocket: adminSocketPath(sessionID),
-		logPath:     filepath.Join(logDir, sessionID+".log"),
+		sessionID: sessionID,
+		logPath:   filepath.Join(logDir, sessionID+".log"),
 	}
 }
 
@@ -100,9 +100,15 @@ func (u *Upterm) WaitReady() error {
 	return fmt.Errorf("upterm did not become ready within 30s. Logs:\n%s", string(logs))
 }
 
-// GetSessionInfo returns the current session info.
+// GetSessionInfo returns the current session info by finding the admin socket.
 func (u *Upterm) GetSessionInfo() (*UptermSession, error) {
-	out, err := exec.Command("upterm", "session", "current", "-o", "json").CombinedOutput()
+	socketPath, err := u.findAdminSocket()
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := exec.Command("upterm", "session", "current",
+		"--admin-socket", socketPath, "-o", "json").CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("getting session info: %w (%s)", err, string(out))
 	}
@@ -111,7 +117,39 @@ func (u *Upterm) GetSessionInfo() (*UptermSession, error) {
 	if err := json.Unmarshal(out, &info); err != nil {
 		return nil, fmt.Errorf("parsing session info: %w", err)
 	}
+	u.adminSocket = socketPath
 	return &info, nil
+}
+
+// findAdminSocket discovers the upterm admin socket path.
+func (u *Upterm) findAdminSocket() (string, error) {
+	// If we already found it, reuse
+	if u.adminSocket != "" {
+		if _, err := os.Stat(u.adminSocket); err == nil {
+			return u.adminSocket, nil
+		}
+	}
+
+	// Scan the upterm socket directory for .sock files
+	socketDir := uptermSocketDir()
+	entries, err := os.ReadDir(socketDir)
+	if err != nil {
+		return "", fmt.Errorf("reading socket dir %s: %w", socketDir, err)
+	}
+
+	for _, e := range entries {
+		if filepath.Ext(e.Name()) == ".sock" {
+			return filepath.Join(socketDir, e.Name()), nil
+		}
+	}
+	return "", fmt.Errorf("no upterm admin socket found in %s", socketDir)
+}
+
+func uptermSocketDir() string {
+	if runtime.GOOS == "darwin" {
+		return filepath.Join(homeDir(), "Library", "Application Support", "upterm")
+	}
+	return filepath.Join("/run/user", fmt.Sprintf("%d", os.Getuid()), "upterm")
 }
 
 // GetSSHCommand returns the SSH command guests use to join.
@@ -120,7 +158,17 @@ func (u *Upterm) GetSSHCommand() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return info.SessionID, nil
+	// Build: ssh <sessionID>@host:port
+	// info.Host is like "ssh://uptermd.upterm.dev:22"
+	// info.SessionID is the token
+	host := strings.TrimPrefix(info.Host, "ssh://")
+	// Split host:port
+	hostPart := strings.Split(host, ":")[0]
+	port := "22"
+	if parts := strings.SplitN(host, ":", 2); len(parts) == 2 {
+		port = parts[1]
+	}
+	return fmt.Sprintf("ssh %s@%s -p %s", info.SessionID, hostPart, port), nil
 }
 
 // Kill terminates the upterm session.
@@ -157,9 +205,3 @@ func HasClaude() bool {
 	return err == nil
 }
 
-func adminSocketPath(sessionID string) string {
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(homeDir(), "Library", "Application Support", "upterm", sessionID+".sock")
-	}
-	return filepath.Join("/run/user", fmt.Sprintf("%d", os.Getuid()), "upterm", sessionID+".sock")
-}
