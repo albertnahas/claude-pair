@@ -31,20 +31,60 @@ mkdir -p "$INSTALL_DIR"
 cp "$TMP/$BINARY" "$INSTALL_DIR/$BINARY"
 chmod 755 "$INSTALL_DIR/$BINARY"
 rm -rf "$TMP"
-
-echo "$BINARY $VERSION installed to $INSTALL_DIR/$BINARY"
+echo "  $BINARY installed to $INSTALL_DIR/$BINARY"
 
 # Ensure ~/.local/bin is on PATH
 case ":$PATH:" in
   *":$INSTALL_DIR:"*) ;;
-  *) echo ""
-     echo "Add to your shell profile:"
-     echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+  *) export PATH="$INSTALL_DIR:$PATH"
+     NEEDS_PATH=1
      ;;
 esac
 
+# Install dependencies
+install_deps() {
+  if command -v brew >/dev/null 2>&1; then
+    # macOS / Homebrew
+    if ! command -v tmux >/dev/null 2>&1; then
+      echo "  Installing tmux..."
+      brew install tmux
+    fi
+    if ! command -v upterm >/dev/null 2>&1; then
+      echo "  Installing upterm..."
+      brew install --cask owenthereal/upterm/upterm
+    fi
+  elif command -v apt-get >/dev/null 2>&1; then
+    # Debian / Ubuntu
+    if ! command -v tmux >/dev/null 2>&1; then
+      echo "  Installing tmux..."
+      sudo apt-get install -y tmux
+    fi
+    if ! command -v upterm >/dev/null 2>&1; then
+      echo "  Installing upterm..."
+      UPTERM_VERSION=$(curl -fsSL "https://api.github.com/repos/owenthereal/upterm/releases/latest" | grep '"tag_name"' | sed -E 's/.*"([^"]+)".*/\1/')
+      curl -fsSL "https://github.com/owenthereal/upterm/releases/download/${UPTERM_VERSION}/upterm_${OS}_${ARCH}.tar.gz" -o /tmp/upterm.tar.gz
+      tar -xzf /tmp/upterm.tar.gz -C /tmp upterm
+      sudo install -m 755 /tmp/upterm /usr/local/bin/upterm
+      rm -f /tmp/upterm.tar.gz /tmp/upterm
+    fi
+  else
+    echo ""
+    echo "  Could not detect package manager. Install manually:"
+    echo "    tmux:   https://github.com/tmux/tmux"
+    echo "    upterm: https://github.com/owenthereal/upterm"
+  fi
+}
+
 echo ""
-echo "Prerequisites: upterm, tmux, claude"
-echo "  brew install --cask owenthereal/upterm/upterm"
-echo "  brew install tmux"
-echo "  Run '$BINARY doctor' to verify"
+echo "Checking dependencies..."
+install_deps
+
+# Summary
+echo ""
+if [ -n "$NEEDS_PATH" ]; then
+  echo "Add to your shell profile:"
+  echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+  echo ""
+fi
+
+"$INSTALL_DIR/$BINARY" doctor
