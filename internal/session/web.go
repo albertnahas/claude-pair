@@ -27,7 +27,7 @@ func (w *WebViewer) Start(tmuxSessionName string) (string, error) {
 	w.died = make(chan struct{})
 
 	w.proc = exec.Command("ttyd",
-		"-R",
+		"--readonly",
 		"-p", fmt.Sprintf("%d", ttydDefaultPort),
 		"tmux", "attach-session", "-r", "-t", tmuxSessionName,
 	)

@@ -53,6 +53,10 @@ install_deps() {
       echo "  Installing upterm..."
       brew install --cask owenthereal/upterm/upterm
     fi
+    if ! command -v ttyd >/dev/null 2>&1; then
+      echo "  Installing ttyd (for --web)..."
+      brew install ttyd
+    fi
   elif command -v apt-get >/dev/null 2>&1; then
     # Debian / Ubuntu
     if ! command -v tmux >/dev/null 2>&1; then
@@ -66,6 +70,10 @@ install_deps() {
       tar -xzf /tmp/upterm.tar.gz -C /tmp upterm
       sudo install -m 755 /tmp/upterm /usr/local/bin/upterm
       rm -f /tmp/upterm.tar.gz /tmp/upterm
+    fi
+    if ! command -v ttyd >/dev/null 2>&1; then
+      echo "  Installing ttyd (for --web)..."
+      sudo apt-get install -y ttyd 2>/dev/null || echo "  ttyd not in apt; install manually: https://github.com/tsl0922/ttyd"
     fi
   else
     echo ""
