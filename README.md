@@ -2,9 +2,7 @@
 
 Share a live Claude Code session with a collaborator over SSH.
 
-```
-[demo placeholder — gif or screenshot]
-```
+![claude-pair demo](demo.png)
 
 ## What it does
 
