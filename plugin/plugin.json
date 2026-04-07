@@ -1,0 +1,12 @@
+{
+  "name": "claude-pair",
+  "version": "0.5.0",
+  "description": "Share your Claude Code session with a colleague in real-time",
+  "commands": [
+    {
+      "name": "pair",
+      "description": "Start, stop, or check status of a pair programming session",
+      "file": "commands/pair.md"
+    }
+  ]
+}

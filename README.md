@@ -55,7 +55,9 @@ Or with Go:
 go install github.com/albertnahas/claude-pair/cmd/claude-pair@latest
 ```
 
-Homebrew tap coming once the project stabilizes.
+```sh
+brew install albertnahas/tap/claude-pair
+```
 
 The installer handles all dependencies (upterm, tmux, ttyd). Run `claude-pair doctor` to verify.
 

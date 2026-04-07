@@ -76,6 +76,11 @@ func (t *Tmux) SetStatusBar(joinCmd string, allowUsers []string) error {
 	return nil
 }
 
+// SetWindowSize sets the tmux window-size option (e.g. "latest" or "smallest").
+func (t *Tmux) SetWindowSize(mode string) error {
+	return run("tmux", "set-option", "-t", t.SessionName, "-g", "window-size", mode)
+}
+
 // HasTmux checks if tmux is installed.
 func HasTmux() bool {
 	_, err := exec.LookPath("tmux")

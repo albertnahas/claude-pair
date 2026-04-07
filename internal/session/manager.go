@@ -123,6 +123,9 @@ func (m *Manager) Host() error {
 	if err := m.waitTmuxReady(10 * time.Second); err != nil {
 		fmt.Printf("  Warning: tmux session not detected: %v\n", err)
 	}
+	if err := m.tmux.SetWindowSize("latest"); err != nil {
+		fmt.Printf("  Warning: could not set tmux window-size: %v\n", err)
+	}
 	if err := m.tmux.SetStatusBar(joinCmd, m.cfg.AllowUsers); err != nil {
 		fmt.Printf("  Warning: could not set tmux status bar: %v\n", err)
 	}

@@ -58,7 +58,7 @@ func (u *Upterm) Host(tmuxSessionName, projectDir, claudeName string, allowUsers
 		shellescape(projectDir), shellescape(tmuxSessionName), shellescape(claudeCmd), shellescape(tmuxSessionName),
 	)
 	// Guests attach to the same tmux session as the host.
-	forceCmd := fmt.Sprintf("tmux attach-session -t %s", shellescape(tmuxSessionName))
+	forceCmd := fmt.Sprintf("tmux new-session -t %s", shellescape(tmuxSessionName))
 
 	args := []string{"host", "--accept", "--force-command", forceCmd}
 	for _, user := range allowUsers {
