@@ -1,5 +1,5 @@
 ---
-description: "Start, stop, or check a pair programming session. Use /pair to start sharing, /pair stop to end, /pair status to see the join link."
+description: "Start, stop, or check a pair programming session. Share your live Claude Code terminal with a colleague over SSH. Use /pair to start sharing, /pair stop to end, /pair status to see the join link."
 allowed-tools: ["Bash"]
 argument-hint: "[start|stop|status]"
 ---
@@ -10,7 +10,7 @@ Parse the argument (default: `start`):
 ```
 claude-pair host --discoverable --no-record &
 ```
-Wait ~3 seconds for upterm to connect, then run `claude-pair status` to retrieve the join link. Display the SSH join command prominently so the user can share it with their colleague. If `claude-pair status` fails (session not ready yet), wait 2 more seconds and retry once.
+Wait ~5 seconds for upterm to connect, then run `claude-pair status` to retrieve the join link. Display the SSH join command prominently so the user can share it with their colleague. If `claude-pair status` fails (session not ready yet), wait 3 more seconds and retry once.
 
 **stop** — Run `claude-pair stop` and confirm the session has ended.
 

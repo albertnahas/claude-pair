@@ -1,0 +1,8 @@
+{
+  "name": "claude-pair",
+  "version": "0.6.0",
+  "description": "Share your Claude Code session with a colleague in real-time via SSH",
+  "author": {
+    "name": "Albert Nahas"
+  }
+}
