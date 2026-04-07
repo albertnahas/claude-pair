@@ -6,11 +6,11 @@ argument-hint: "[start|stop|status]"
 
 Parse the argument (default: `start`):
 
-**start** — Run `claude-pair host --discoverable --no-record` in the background:
+**start** — Run:
 ```
-claude-pair host --discoverable --no-record &
+claude-pair host --discoverable --no-record --bg
 ```
-Wait ~5 seconds for upterm to connect, then run `claude-pair status` to retrieve the join link. Display the SSH join command prominently so the user can share it with their colleague. If `claude-pair status` fails (session not ready yet), wait 3 more seconds and retry once.
+The `--bg` flag starts the session without attaching to tmux, so it works from within Claude Code. Wait ~5 seconds, then run `claude-pair status` to retrieve the join link. Display the SSH join command prominently. If status shows no join command yet, wait 3 more seconds and retry once.
 
 **stop** — Run `claude-pair stop` and confirm the session has ended.
 

@@ -30,6 +30,7 @@ type HostConfig struct {
 	AllowUsers   []string
 	Web          bool
 	Discoverable bool
+	Background   bool
 }
 
 // SessionState persists the active session info for stop/status commands.
@@ -197,6 +198,11 @@ func (m *Manager) Host() error {
 	// 8. Handle signals for clean shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	if m.cfg.Background {
+		fmt.Println("  Session running in background. Use 'claude-pair stop' to end.")
+		return nil
+	}
 
 	fmt.Println("  Press Ctrl+C to end the session, or run: claude-pair stop")
 	fmt.Println("  Attaching to session...")

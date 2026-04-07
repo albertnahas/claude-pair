@@ -34,6 +34,7 @@ func hostCmd() *cobra.Command {
 		allowUsers   []string
 		web          bool
 		discoverable bool
+		background   bool
 	)
 
 	cmd := &cobra.Command{
@@ -47,6 +48,7 @@ func hostCmd() *cobra.Command {
 				AllowUsers:   allowUsers,
 				Web:          web,
 				Discoverable: discoverable,
+				Background:   background,
 			}
 			mgr, err := session.NewManager(cfg)
 			if err != nil {
@@ -61,6 +63,7 @@ func hostCmd() *cobra.Command {
 	cmd.Flags().StringSliceVar(&allowUsers, "allow", nil, "Restrict access to GitHub users (e.g., --allow alice --allow bob)")
 	cmd.Flags().BoolVar(&web, "web", false, "Launch a browser-accessible viewer via ttyd")
 	cmd.Flags().BoolVar(&discoverable, "discoverable", false, "Advertise session on local network via mDNS")
+	cmd.Flags().BoolVar(&background, "bg", false, "Run in background without attaching to tmux (for /pair command)")
 
 	return cmd
 }
