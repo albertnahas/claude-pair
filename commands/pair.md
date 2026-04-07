@@ -21,28 +21,22 @@ Examples:
 
 After running, wait ~5 seconds, then run `claude-pair status` to retrieve the join link. Display the SSH join command prominently. If status shows no join command yet, wait 3 more seconds and retry once.
 
-**join** — Join a session from within Claude Code. Opens a new Terminal window with the SSH connection.
+**join** — Join a session from within Claude Code. Opens a new Terminal window.
 
-If the user provides a link (e.g., `/pair join ssh TOKEN@uptermd.upterm.dev`), extract the SSH command and open it:
+If the user provides a link (e.g., `/pair join ssh TOKEN@uptermd.upterm.dev`), extract the SSH target (the user@host part). If no link provided, run `claude-pair status` to get the join link from the active session.
+
+Open it in a new Terminal window by creating a temp script and opening it:
 ```bash
-osascript -e 'tell application "Terminal" to do script "ssh TOKEN@uptermd.upterm.dev"'
+SCRIPT=$(mktemp /tmp/claude-pair-join-XXXXX.sh)
+echo '#!/bin/bash' > "$SCRIPT"
+echo 'ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=/dev/null TOKEN@uptermd.upterm.dev' >> "$SCRIPT"
+chmod +x "$SCRIPT"
+open -a Terminal "$SCRIPT"
 ```
-
-If no link is provided (`/pair join`), first discover sessions on the local network:
-```bash
-claude-pair discover --json 2>/dev/null || true
-```
-If that doesn't work or isn't available, tell the user to provide the SSH link: `/pair join ssh TOKEN@host`
-
-If a session is found, open it in a new Terminal window using the osascript command above.
 
 Tell the user: "Opened a new Terminal window with the shared session."
 
-**discover** — Scan the local network and open the first found session in a new Terminal window:
-```bash
-claude-pair discover --json 2>/dev/null
-```
-If sessions are found, pick the first one and open it with osascript. Otherwise tell the user no sessions were found.
+**discover** — Scan the local network for sessions. Run `claude-pair discover` in background mode or tell the user to run `cpd` in a terminal, as discover requires interactive stdin.
 
 **stop** — Run `claude-pair stop` and confirm the session has ended.
 
