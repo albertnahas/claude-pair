@@ -20,19 +20,5 @@ archives:
 checksum:
   name_template: checksums.txt
 
-brews:
-  - repository:
-      owner: albertnahas
-      name: homebrew-tap
-    homepage: https://github.com/albertnahas/claude-pair
-    description: Real-time pair programming with shared Claude Code sessions
-    license: MIT
-    dependencies:
-      - name: tmux
-      - name: upterm
-        type: optional
-    install: |
-      bin.install "claude-pair"
-
 changelog:
   sort: asc
